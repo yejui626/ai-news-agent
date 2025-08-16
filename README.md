@@ -114,3 +114,31 @@ Below is a formal, corporate‑style statement of scope for your “News‑to‑
 ---
 
 This scope captures all functional components, non‑functional requirements, and milestone deliverables needed to launch your portfolio project.  Let me know if you’d like to adjust any of these items or dive into the first milestone immediately.
+
+---
+
+# AI News Agent
+
+Small multi-agent project that scrapes headlines and blog content and coordinates work with a supervisor agent.
+
+## Project layout
+
+```
+- ai_news_agent/
+  - __init__.py         # package exports
+  - config.py           # constants and configuration
+  - tools.py            # web-scraping tools (wrapped as langchain tools)
+  - agents.py           # LLM and agent factory usages
+  - handoff.py          # handoff tool factory and instances
+  - supervisor.py       # graph composition and runner
+  - utils.py            # helper utilities for printing
+- run.py                # top-level runner script
+```
+
+## Usage
+
+`python run.py`
+
+## Notes
+
+Environment dependencies are not pinned in this repo; install requirements for langchain, langgraph, groq, requests, beautifulsoup4, and langsmith as needed.

@@ -1,0 +1,9 @@
+[project]
+name = "ai-news-agent"
+version = "0.1.0"
+description = "Multi-agent news scraping supervisor"
+authors = [ { name = "AI Engineer" } ]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
