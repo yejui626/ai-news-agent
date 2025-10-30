@@ -7,10 +7,10 @@ import os
 
 TARGET_AUTHORS = {
     "mplus313", "rhbinvest", "AmInvest", "MalaccaSecurities",
-    "sectoranalyst", "PhillipCapital", "HLInvest", "PublicInvest"
+    "sectoranalyst", "PhillipCapital", "HLInvest", "PublicInvest", "edgeinvest"
 }
 
-TARGET_DATE = "25 July 2025"  # Change as needed
+TARGET_DATE = "15 August 2025"  # Change as needed
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsScraper/1.0)"}
 BASE_URL = "https://klse.i3investor.com"
 IMAGE_FOLDER = "technical_charts"
@@ -32,9 +32,8 @@ def parse_headlines(html):
     for el in container.find_all(recursive=False):
         h5 = el.select_one("h5")
         if h5:
-            match = re.search(r"\d{1,2} \w+ \d{4}", h5.text)
-            if match:
-                current_date = match.group(0)
+            m = re.search(r"\d{1,2} \w+ \d{4}", h5.text)
+            current_date = datetime.strptime(m.group(0), "%d %B %Y").date() if m else None
             continue
 
         if el.name == "ul" and "ms-4" in el.get("class", []):
