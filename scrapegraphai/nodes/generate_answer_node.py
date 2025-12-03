@@ -6,6 +6,8 @@ import json
 import time
 from typing import List, Optional
 
+# ✅ NEW IMPORTS FOR AGENTIC FLOW
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain.prompts import PromptTemplate
 from langchain_aws import ChatBedrock
 from langchain_community.chat_models import ChatOllama
@@ -30,23 +32,7 @@ from .base_node import BaseNode
 class GenerateAnswerNode(BaseNode):
     """
     Initializes the GenerateAnswerNode class.
-
-    Args:
-        input (str): The input data type for the node.
-        output (List[str]): The output data type(s) for the node.
-        node_config (Optional[dict]): Configuration dictionary for the node,
-        which includes the LLM model, verbosity, schema, and other settings.
-        Defaults to None.
-        node_name (str): The name of the node. Defaults to "GenerateAnswer".
-
-    Attributes:
-        llm_model: The language model specified in the node configuration.
-        verbose (bool): Whether verbose mode is enabled.
-        force (bool): Whether to force certain behaviors, overriding defaults.
-        script_creator (bool): Whether the node is in script creation mode.
-        is_md_scraper (bool): Whether the node is scraping markdown data.
-        additional_info (Optional[str]): Any additional information to be
-        included in the prompt templates.
+    ... [Docstring remains same] ...
     """
 
     def __init__(
@@ -118,13 +104,6 @@ class GenerateAnswerNode(BaseNode):
     def execute(self, state: dict) -> dict:
         """
         Executes the GenerateAnswerNode.
-
-        Args:
-            state (dict): The current state of the graph. The input keys will be used
-                          to fetch the correct data from the state.
-
-        Returns:
-            dict: The updated state with the output key containing the generated answer.
         """
         self.logger.info(f"--- Executing {self.node_name} Node ---")
 
@@ -133,7 +112,10 @@ class GenerateAnswerNode(BaseNode):
         user_prompt = input_data[0]
         doc = input_data[1]
 
+        # 1. Setup Output Parser (Used by both standard and agent flow)
         if self.node_config.get("schema", None) is not None:
+            # Logic to setup Pydantic output parser based on LLM type
+            # ... [Paste your existing output parser setup logic here] ...
             if isinstance(self.llm_model, ChatOpenAI):
                 output_parser = get_pydantic_output_parser(self.node_config["schema"])
                 format_instructions = output_parser.get_format_instructions()
@@ -147,6 +129,8 @@ class GenerateAnswerNode(BaseNode):
                     output_parser = None
                     format_instructions = ""
         else:
+            # Logic to setup generic JSON output parser
+            # ... [Paste your existing JsonOutputParser setup logic here] ...
             if not isinstance(self.llm_model, ChatBedrock):
                 output_parser = JsonOutputParser()
                 format_instructions = (
@@ -158,6 +142,8 @@ class GenerateAnswerNode(BaseNode):
                 output_parser = None
                 format_instructions = ""
 
+        # 2. Setup Prompts
+        # ... [Paste your existing prompt template setup logic here] ...
         if (
             not self.script_creator
             or self.force
@@ -177,6 +163,107 @@ class GenerateAnswerNode(BaseNode):
             template_chunks_prompt = self.additional_info + template_chunks_prompt
             template_merge_prompt = self.additional_info + template_merge_prompt
 
+
+        # 3. Execution Logic
+        tools = self.node_config.get("tools", [])
+        
+        # We only integrate the AGENTIC FLOW for the primary extraction task (single chunk)
+        if len(doc) == 1 and tools:
+            # ============================================================
+            # 🤖 AGENTIC FLOW (Single Chunk with Tool Calling)
+            # ============================================================
+            self.logger.info(f"--- [GenerateAnswerNode] Agent Mode Active. Tools: {[t.name for t in tools]} ---")
+            
+            # 1. Bind Tools and Define Initial Prompt (Goal: Extract/Validate/Generate JSON)
+            llm_with_tools = self.llm_model.bind_tools(tools)
+            
+            # We must instruct the LLM to use the tool and then output the final JSON matching the Pydantic schema
+            prompt_template_content = template_no_chunks_prompt.format(
+                content=doc, 
+                question=user_prompt, 
+                format_instructions=format_instructions
+            )
+            
+            sys_msg = SystemMessage(
+                content="You are a precise extraction and validation agent. "
+                        "Your final output MUST be a JSON object that strictly adheres to the format instructions provided. "
+                        "You MUST verify company listings using `check_bursa_listing` before finalizing the extraction."
+                        "Do not include the news for tickers/names that failed the validation from `check_bursa_listing` tool."
+            )
+            human_msg = HumanMessage(content=prompt_template_content)
+            messages = [sys_msg, human_msg]
+            
+            # 2. Execution Loop
+            max_turns = 10
+            final_response_str = None
+            
+            for turn in range(max_turns):
+                try:
+                    # Invoke LLM (expecting a tool call or final text response)
+                    ai_msg = self.invoke_with_timeout(llm_with_tools, messages, self.timeout)
+                    messages.append(ai_msg)
+                    
+                    if ai_msg.tool_calls:
+                        self.logger.info(f"--- [Agent] Turn {turn+1}: LLM requesting {len(ai_msg.tool_calls)} tool calls ---")
+                        
+                        tool_outputs = []
+                        for tool_call in ai_msg.tool_calls:
+                            selected_tool = next((t for t in tools if t.name == tool_call["name"]), None)
+                            if selected_tool:
+                                try:
+                                    tool_output = selected_tool.invoke(tool_call["args"])
+                                    self.logger.info(f"    > Tool '{tool_call['name']}' Output: {str(tool_output)[:100]}...")
+                                except Exception as e:
+                                    tool_output = f"Error executing tool: {e}"
+                                
+                                tool_outputs.append(ToolMessage(
+                                    content=str(tool_output),
+                                    tool_call_id=tool_call["id"]
+                                ))
+                            else:
+                                tool_outputs.append(ToolMessage(content="Error: Tool not found.", tool_call_id=tool_call["id"]))
+                        messages.extend(tool_outputs)
+
+                    else:
+                        # No tool calls -> Final Answer is generated
+                        final_response_str = ai_msg.content
+                        break
+                        
+                except Exception as e:
+                    self.logger.error(f"--- [Agent] Error in loop: {e}")
+                    # If the agent loop fails, we fallback to the error handler outside
+                    raise
+
+            # 4. ✅ FINAL STEP: Apply Output Parser to the final string
+            if final_response_str:
+                try:
+                    # Clean up JSON if LLM wrapped it in markdown
+                    if isinstance(final_response_str, str):
+                        import re
+                        json_match = re.search(r"```json\s*(\{.*?\})\s*```", final_response_str, re.DOTALL)
+                        if json_match:
+                            final_response_str = json_match.group(1)
+                    
+                    answer = json.loads(final_response_str)
+
+                    # Now that we have the dict, validate structure if output_parser is set
+                    if output_parser:
+                        answer = output_parser.parse(json.dumps(answer))
+
+                except Exception as e:
+                    error_msg = f"Final Answer Parsing Failed: {str(e)}"
+                    state.update({self.output[0]: {"error": error_msg, "raw_response": final_response_str}})
+                    return state
+
+                state.update({self.output[0]: answer})
+                return state
+
+        # ============================================================
+        # 📜 STANDARD FLOW (Legacy Chains - Fallback/Multi-Chunk)
+        # ============================================================
+        
+        # [The original code block now runs only if tools is False OR if len(doc) > 1]
+        
         if len(doc) == 1:
             prompt = PromptTemplate(
                 template=template_no_chunks_prompt,
@@ -207,6 +294,7 @@ class GenerateAnswerNode(BaseNode):
             state.update({self.output[0]: answer})
             return state
 
+        # [Existing Logic: Multi-Chunk (Map-Reduce) Processing]
         chains_dict = {}
         for i, chunk in enumerate(
             tqdm(doc, desc="Processing chunks", disable=not self.verbose)

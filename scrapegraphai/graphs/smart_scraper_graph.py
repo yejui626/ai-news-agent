@@ -102,6 +102,7 @@ class SmartScraperGraph(AbstractGraph):
                 "llm_model": self.llm_model,
                 "additional_info": self.config.get("additional_info"),
                 "schema": self.schema,
+                "tools": self.config.get("tools", [])
             },
         )
 

@@ -50,17 +50,29 @@ class SmartScraperMultiGraph(AbstractGraph):
     """
 
     def __init__(
-        self,
-        prompt: str,
-        source: List[str],
-        config: dict,
-        schema: Optional[Type[BaseModel]] = None,
-        merge: str = "no",  # <-- new parameter, default "no"
-    ):
+            self,
+            prompt: str,
+            source: List[str],
+            config: dict,
+            schema: Optional[Type[BaseModel]] = None,
+            merge: str = "no",
+        ):
         # normalize and store merge flag
         self.merge = (merge or "no").strip().lower()
         self.max_results = config.get("max_results", 3)
+        
+        # --- FIX START ---
+        # 1. Back up the tools because safe_deepcopy might strip them
+        original_tools = config.get("tools", [])
+        
+        # 2. Perform deepcopy
         self.copy_config = safe_deepcopy(config)
+        
+        # 3. Restore tools explicitly if they were lost/corrupted
+        if original_tools:
+            self.copy_config["tools"] = original_tools
+        # --- FIX END ---
+
         self.copy_schema = deepcopy(schema)
 
         super().__init__(prompt, config, source, schema)
@@ -105,7 +117,7 @@ class SmartScraperMultiGraph(AbstractGraph):
             entry_point=graph_iterator_node,
             graph_name=self.__class__.__name__,
         )
-
+    
     def run(self) -> str:
         """
         Executes the web scraping and searching process.
@@ -116,5 +128,20 @@ class SmartScraperMultiGraph(AbstractGraph):
 
         inputs = {"user_prompt": self.prompt, "urls": self.source}
         self.final_state, self.execution_info = self.graph.execute(inputs)
+        
+        # Debugging print (Optional)
+        # print("Printing self.final_state:", self.final_state)
 
-        return self.final_state.get("answer", "No answer found.")
+        # --- FIX STARTS HERE ---
+        # Priority 1: Check for 'answer' (standard single graph)
+        if "answer" in self.final_state:
+            return self.final_state["answer"]
+            
+        # Priority 2: Check for 'results' (multi-graph / batch output)
+        if "results" in self.final_state:
+            # 'results' is usually a list of dicts, e.g. [{'company': [...]}]
+            # We return it directly so the scraper wrapper handles the parsing
+            return self.final_state["results"][0]
+            
+        return "No answer found."
+        # --- FIX ENDS HERE ---

@@ -32,7 +32,7 @@ except Exception:
     NEWSPAPER_AVAILABLE = False
 
 # ---------- CONFIG ----------
-INPUT_XLSX = "corporate_news_notebook_output.xlsx"   # adjust path if needed
+INPUT_XLSX = "corporate_news_notebook_output_test.xlsx"   # adjust path if needed
 OUTPUT_XLSX = "corporate_news_originals.xlsx"
 URL_COLUMN = "link"                                  # column in your annotated Excel with URLs
 MAX_WORKERS = 6                                      # thread pool size; tune by network capacity and politeness
