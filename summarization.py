@@ -1,28 +1,54 @@
 import os
-from typing import List, Dict, Any
-
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+import sys
+import operator
+from typing import List, Dict, Any, TypedDict, Annotated
 from dotenv import load_dotenv
 
-# Assuming costar_prompt.py is importable
-from costar_prompt import CostarPrompt 
+# LangChain / LangGraph Imports
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langgraph.graph import StateGraph, END, START
 
+# Local Imports handling (supports running from root or backend dir)
+try:
+    from costar_prompt import CostarPrompt
+    from evaluation_service import EvaluationAgent
+except ImportError:
+    # Fallback: add parent directory to path
+    sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+    from costar_prompt import CostarPrompt
+    from evaluation_service import EvaluationAgent
 
 load_dotenv()
 
+# ====================================================
+# 1. Define Agent State
+# ====================================================
+class SummarizationState(TypedDict):
+    source_text: str       # The full original article content
+    initial_summary: str
+    current_draft: str     # The draft being evaluated/refined
+    
+    # Evaluation Data
+    eval_score: float
+    eval_feedback: str     # Feedback from the Judge
+    is_passing: bool
+    
+    # Loop control
+    retry_count: int
+
 # ==============================================================================
-# 1. Summarizer Class
+# 2. Summarizer Class (The Agent)
 # ==============================================================================
 class Summarizer:
     """
-    Handles the summarization of individual news articles using a fine-tuned LLM 
-    and the CoSTAR prompting framework.
+    Handles the summarization of news articles using a fine-tuned LLM.
+    Now includes a Self-Correcting Agentic Workflow (Evaluator-Optimizer).
     """
     
     def __init__(self, model_id: str = "ft:gpt-4.1-nano-2025-04-14:universiti-malaya:summarizer:CNgrReGm"):
         """
-        Initializes the LLM with the specified fine-tuned model ID.
+        Initializes the LLM and the Agent Graph.
         """
         self.model_id = model_id
         # Keeping temperature low for deterministic, factual summarization
@@ -31,17 +57,29 @@ class Summarizer:
             temperature=0.0 
         )
         
-        # System Message acts as the high-level instruction set for the LLM's personality
+        # System Message for the base generator
         self.system_message = SystemMessage(
-            content="You are a financial news summarization assistant. Your task is to read a full financial or corporate news article and generate a concise abstractive summary.\n\nYour summary must:\n- Contain 3 to 4 sentences.\n- Present key corporate or financial developments factually and neutrally.\n- Use a professional tone similar to financial journalism.\n- Avoid opinions, redundant details, or speculative language.\n- Use proper capitalization and standard financial abbreviations (e.g., RM, %, bn, m)."
+            content="You are a specialized financial summarization engine. Read the structured request and generate the summary strictly following the rules outlined in the 'Response' section of the CoSTAR prompt."
         )
 
+        # Initialize the Judge (Evaluator)
+        # We accept a slightly lower threshold for automated passing to avoid infinite loops on subjective style
+        self.evaluator = EvaluationAgent(
+            task_type="summarization", 
+            threshold=0.85,
+            model_name="gpt-4o-mini" 
+        )
+
+        # Build the Graph once during initialization
+        self.app = self._build_agent_graph()
+
+    # -----------------------------------------------------------
+    # Core Methods (Tools/Actions)
+    # -----------------------------------------------------------
     def summarize(self, article_content: str) -> str:
         """
-        Generates a summary using the CoSTAR prompt structure.
+        Standard 0-shot summarization using CoSTAR.
         """
-        
-        # 1. Define the CoSTAR components
         costar = CostarPrompt(
             context="You are a corporate news analyst preparing brief updates for an investment report.",
             objective="Analyze the full corporate news article and generate a concise abstractive summary.",
@@ -49,7 +87,6 @@ class Summarizer:
             response="Generate a summary that: 1) Is 3 to 4 sentences long. 2) Presents key corporate/financial developments factually. 3) Maintains a neutral, professional financial journalism tone. 4) Avoids opinions, redundancy, or speculative language. 5) Uses proper capitalization and standard financial abbreviations (RM, %, bn, m)."
         )
         
-        # 2. Combine the CoSTAR prompt structure with the article content
         full_prompt_content = f"{str(costar)}\n\n### SOURCE ARTICLE ###\n{article_content}"
 
         messages = [
@@ -64,23 +101,170 @@ class Summarizer:
             print(f"--- [Summarizer] Error summarizing article: {e} ---")
             return "[Summarization Failed]"
 
-    def process_articles(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def refine_summary(self, source_text: str, current_draft: str, improvements: str) -> str:
         """
-        Takes a list of articles (from scraper) and adds a 'summary' key to each.
+        Refines the summary based on external evaluation feedback.
         """
+        refinement_costar = CostarPrompt(
+            context="You are a meticulous Senior Editor, tasked with refining a corporate news summary based on critical feedback. Your primary goal is to fix factual errors and ensure the tone is highly professional.",
+            objective=f"Rework the summary to strictly address the following feedback and constraints:\n\n### FEEDBACK ###\n{improvements}",
+            audience="The final audience is a senior investment editor.",
+            response=f"Output the final refined summary (3-4 sentences ONLY) that is factually flawless and maintains an impeccable executive tone. Base all facts ONLY on the source article provided below.\n\n### SOURCE ARTICLE ###\n{source_text}"
+        )
+        
+        prompt_content = f"{str(refinement_costar)}\n\n### CURRENT DRAFT ###\n{current_draft}"
+
+        messages = [
+            self.system_message,
+            HumanMessage(content=prompt_content)
+        ]
+        
+        try:
+            response = self.llm.invoke(messages)
+            return response.content.strip()
+        except Exception as e:
+            return current_draft # Fallback to previous draft if refinement fails
+
+    # -----------------------------------------------------------
+    # Graph Nodes (Internal)
+    # -----------------------------------------------------------
+    def _initial_summarization_node(self, state: SummarizationState) -> Dict[str, Any]:
+        print(f"\n--- [Step 1] Initial Summarization ---")
+        res = self.summarize(state["source_text"])
+        return {
+            "initial_summary": res, 
+            "current_draft": res, 
+            "eval_feedback": "",
+            "retry_count": 0
+        }
+
+    async def _evaluation_node(self, state: SummarizationState) -> Dict[str, Any]:
+        print(f"--- [Step 2] Evaluation (DeepEval) ---")
+        
+        # Async evaluation via the EvaluationService
+        results = await self.evaluator.a_evaluate(
+            generated_text=state["current_draft"],
+            source_context=state["source_text"],
+            section_topic="Corporate News Summary"
+        )
+        
+        feedback_list = []
+        for name, m in results["metrics"].items():
+            if not m["passed"]:
+                feedback_list.append(f"[{name}] Score: {m['score']:.2f}. Feedback: {m['feedback']}")
+        
+        feedback_str = " ".join(feedback_list)
+        if not feedback_str and not results["overall_pass"]:
+             # Fallback if metrics failed but didn't provide clear feedback string
+             feedback_str = "General failure in tone or factual fidelity."
+
+        return {
+            "eval_score": results["average_score"],
+            "is_passing": results["overall_pass"],
+            "eval_feedback": feedback_str
+        }
+
+    def _refinement_node(self, state: SummarizationState) -> Dict[str, Any]:
+        current_retries = state["retry_count"]
+        print(f"--- [Step 3] Refinement (Attempt {current_retries + 1}) ---")
+        
+        refined = self.refine_summary(
+            source_text=state["source_text"],
+            current_draft=state["current_draft"],
+            improvements=state["eval_feedback"]
+        )
+        
+        return {
+            "current_draft": refined, 
+            "retry_count": current_retries + 1
+        }
+
+    def _check_quality(self, state: SummarizationState) -> str:
+        if state["is_passing"]:
+            return "pass"
+        
+        if state["retry_count"] >= 3:
+            print("   🛑 Max retries reached. Returning best effort.")
+            return "pass" 
+            
+        return "retry"
+
+    # -----------------------------------------------------------
+    # Graph Construction
+    # -----------------------------------------------------------
+    def _build_agent_graph(self):
+        workflow = StateGraph(SummarizationState)
+        
+        # Nodes
+        workflow.add_node("initial", self._initial_summarization_node)
+        workflow.add_node("evaluate", self._evaluation_node)
+        workflow.add_node("refiner", self._refinement_node)
+        
+        # Edges
+        workflow.add_edge(START, "initial")
+        workflow.add_edge("initial", "evaluate")
+        
+        workflow.add_conditional_edges(
+            "evaluate",
+            self._check_quality,
+            {"pass": END, "retry": "refiner"}
+        )
+        
+        workflow.add_edge("refiner", "evaluate")
+        
+        return workflow.compile()
+
+    # -----------------------------------------------------------
+    # Public API
+    # -----------------------------------------------------------
+    async def run_agentic_summarization(self, text: str):
+        """
+        Executes the self-correcting summarization workflow (Async).
+        """
+        inputs = {
+            "source_text": text,
+            "initial_summary": "",
+            "current_draft": "",
+            "eval_score": 0.0,
+            "eval_feedback": "",
+            "is_passing": False,
+            "retry_count": 0
+        }
+        
+        print(f"🚀 Starting Summarization Agent...")
+        final_state = await self.app.ainvoke(inputs)
+        return final_state["current_draft"]
+
+    def process_articles(self, articles: List[Dict[str, Any]], use_agentic: bool = False) -> List[Dict[str, Any]]:
+        """
+        Takes a list of articles and adds a 'summary' key.
+        Supports switching between fast (standard) and robust (agentic) modes.
+        """
+        import asyncio # Import here to avoid top-level async issues in some envs
+        
         processed_articles = []
         for article in articles:
-            article_content = article.get("text", "")
+            content = article.get("text", "")
             
-            if article_content and article_content != "[no content extracted]":
-                article["summary"] = self.summarize(article_content)
+            if content and content != "[no content extracted]":
+                if use_agentic:
+                    # Run the agent loop (requires async context handling if called synchronously)
+                    try:
+                        summary = asyncio.run(self.run_agentic_summarization(content))
+                    except RuntimeError:
+                        # Fallback for nested event loops (e.g. inside Jupyter)
+                        import nest_asyncio
+                        nest_asyncio.apply()
+                        summary = asyncio.run(self.run_agentic_summarization(content))
+                else:
+                    summary = self.summarize(content)
             else:
-                article["summary"] = "[No article text available for summarization]"
+                summary = "[No article text available]"
                 
+            article["summary"] = summary
             processed_articles.append(article)
             
         return processed_articles
-
 
 # ==============================================================================
 # 2. LangGraph Node Wrapper
@@ -92,41 +276,35 @@ def summarizer_node(state: dict) -> dict:
     articles = state.get("scraped_articles", [])
     
     if not articles:
-        print("--- [Summarizer Node] No articles found in state. Skipping. ---")
         return {"scraped_articles": []}
     
-    print(f"--- [Summarizer Node] Starting summarization for {len(articles)} articles ---")
+    print(f"--- [Summarizer Node] Starting processing for {len(articles)} articles ---")
     
     summarizer = Summarizer()
     
-    processed_articles = summarizer.process_articles(articles)
+    # We use agentic=True for high quality, or False for speed. 
+    # For now, let's default to False (Fast) unless specified in state, 
+    # as Agentic takes ~3x longer per article.
+    use_agentic = state.get("use_agentic_summarizer", False) 
     
-    print("--- [Summarizer Node] Summarization complete. ---")
+    processed_articles = summarizer.process_articles(articles, use_agentic=use_agentic)
     
     return {"scraped_articles": processed_articles}
 
-
 # ==============================================================================
-# 3. Example Output (Based on Fine-tuned Model)
+# 3. Execution Test
 # ==============================================================================
 if __name__ == "__main__":
-    example_text = """KUALA LUMPUR (Oct 6): Lion Industries Corp Bhd (KL:LIONIND) plans to revitalise its steel business by, among others, seeking strategic partners for two of its Amsteel Mills plants to bring in new processes amid challenging times.
-
-“We wish to stress that the steel business is still very much the core business of Lion Industries Corporation Bhd and have no plans to shut Amsteel Mills other than for upgrading purposes,” it said in a filing with Bursa Malaysia in response to an article published in The Edge Weekly (Oct 6-12, 2025 issue).
-
-Lion Industries said it is planning to install new machinery and processes at the Bukit Raja mill, which has been in operation since 1978, to enhance efficiency and competitiveness. The group is also in talks with potential strategic partners to provide new technologies.“This will make the plant more efficient and cost-competitive, and keep abreast with market conditions and demands,” it said.
-
-As for the Banting plant, the group said it has been temporarily idled due to high operating costs, particularly following the hike in electricity tariffs that rendered operations uneconomical.
-
-To revitalise operations, the group is exploring strategic partnerships to introduce new processes and products for the plant. An announcement will be made once a suitable partner has been secured, it added.
-
-Lion Industries is principally involved in steel, property development, building materials and others.
-
-The group’s share price closed at a two-month low of 17.5 sen — down 10.26% or two sen — on Monday, valuing it at RM122.49 million. Year to date, the stock is down 23.91%."""
-
-    print("--- Running Summarizer Standalone ---")
-    summarizer = Summarizer()
-    summary = summarizer.summarize(example_text)
+    import asyncio
     
-    print("\n✅ GENERATED SUMMARY (3-4 sentences):")
-    print(summary)
+    # Test Data
+    example_text = """KUALA LUMPUR (Oct 6): Lion Industries Corp Bhd (KL:LIONIND) plans to revitalise its steel business... [Truncated for brevity] ..."""
+
+    summarizer = Summarizer()
+    
+    print("--- 1. Testing Standard Summarization ---")
+    print(summarizer.summarize(example_text))
+    
+    print("\n--- 2. Testing Agentic Summarization ---")
+    final_sum = asyncio.run(summarizer.run_agentic_summarization(example_text))
+    print(f"Final Agentic Summary: {final_sum}")
