@@ -32,58 +32,12 @@ def build_metrics(custom_llm, threshold, task_type="common"):
             model=custom_llm,
             include_reason=True
         ),
-        # GEval(
-        #     name="Factual Fidelity",
-        #     model=custom_llm,
-        #     evaluation_params=common_params,
-        #     criteria="""Evaluate if the key points presented in the 'actual_output' are factually and semantically faithful to the 'input'.
-        #     The output must not introduce any information, claims, or figures that are not supported by the source text.
-        #     While the output is not expected to be exhaustive, every piece of information it *does* contain must be accurate and correctly interpreted.
-        #     The primary goal is to assess the absence of hallucinations and misinterpretations, not the completeness of the summary.""",
-        #     evaluation_steps=[
-        #     "For every claim, data point, or figure present in 'actual_output', verify it matches the 'input'.",
-        #     "Identify any fabricated information or 'hallucinations' in 'actual_output' that are not present in the 'input'.",
-        #     "Check for misinterpretations or distortions of the original meaning in the points that were included.",
-        #     "Assess if the necessary context for understanding the points *included* in 'actual_output' is preserved, preventing them from being misleading.",
-        #     "Acknowledge that 'actual_output' is a selective summary and should NOT be penalized for omitting information from the 'input', as long as the omissions do not distort the meaning of the included points.",
-        #     "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output is factually and semantically very faithful with no hallucinations or misinterpretations.; Score ≥ 0.7: Output is mostly faithful with only minor or borderline issues that don’t significantly affect understanding.; Score ≥ 0.5: Output contains some factual or semantic issues, but they are not severe; caution is advised.; Score < 0.5: Output contains serious hallucinations, misinterpretations, or fabricated facts that distort meaning."],
-        #     threshold=threshold,
-        #     rubric=common_rubric,
-        # ),
 
         "Content Importance & Relevance" : ContextualRelevancyMetric(
             threshold=threshold,
             model=custom_llm,
             include_reason=True
         ),
-        # GEval(
-        #     name="Content Importance & Relevance",
-        #     model=custom_llm,
-        #     evaluation_params=common_params,
-        #     criteria="""Evaluate whether the actual_output prioritizes and highlights the most strategically important information for the intended audience (e.g., investors, executives, analysts).
-        #     Rules:
-        #     - The output should emphasize actionable insights, forward-looking statements, key financial drivers, significant risks, and major opportunities.
-        #     - Less critical background details, historical descriptions, or purely descriptive information should be filtered out or minimized.
-        #     - Prioritization should reflect investor relevance and decision-making value.
-        #     - The output must not be cluttered with low-value or tangential content that detracts from strategic clarity.
-        #     Reject or downgrade if:
-        #     - Key strategic elements (e.g., major risks or opportunities) mentioned in the input are omitted or ignored.
-        #     - The output includes excessive non-strategic or background information that reduces focus on critical points.
-        #     - Actionable or forward-looking insights are missing or insufficiently emphasized.
-        #     - The summary appears unfocused or overwhelmed by irrelevant details.""",
-
-        #     evaluation_steps=[
-        #         "Analyze the input to identify key strategic components: actionable insights, forward-looking statements, key drivers, significant risks, and major opportunities.",
-        #         "Review the actual_output to assess coverage and emphasis on these strategic components.",
-        #         "Check if non-strategic or purely descriptive background details are minimized or excluded.",
-        #         "Determine if the actual_output provides a clear prioritization of information that aligns with investor decision needs.",
-        #         "Penalize if critical strategic points are missing or if irrelevant details dominate the output.",
-        #         "Score higher when the output delivers a concise, focused summary highlighting the most valuable strategic content.",
-        #         "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output strongly prioritizes strategic, actionable, investor-relevant content with exceptional clarity.; Score ≥ 0.7: Output covers most strategic points and minimizes irrelevant content, though a few areas could be improved.; Score ≥ 0.5: Output shows some attempt at prioritizing strategic content but contains notable omissions or distractions.; Score < 0.5: Output fails to focus on strategic content and is dominated by irrelevant or low-value information"
-        #     ],
-        #     threshold=threshold,
-        #     rubric=common_rubric,
-        # ),
 
         "Professional Tone & Grammar" : GEval(
             name="Professional Tone & Grammar",
@@ -122,22 +76,24 @@ def build_metrics(custom_llm, threshold, task_type="common"):
             criteria="""Evaluate whether the 'actual_output' is written with a high level of polish and clarity suitable for time-constrained, decision-making professionals (e.g., CIOs or investors).
             Rules:
             - The language must be clear, direct, grammatically correct, and free from spelling or punctuation errors.
-            - Each point (or sentence) should be concise and free of unnecessary filler, vague modifiers, or marketing-style language.
+            - Each sentence should be concise and free of unnecessary filler, vague modifiers, or marketing-style language.
             - Outputs should be framed for maximum reader impact — the 'so what?' or key takeaway should be obvious.
             - Language should avoid ambiguity, jargon, and speculative or fluffy phrases.
             - Effective phrasing includes action verbs, precise figures, and structured clarity (e.g., cause → effect).
+            - Quotes are ACCEPTABLE if they convey material facts (e.g., reasons for a delay, future strategy).
+            - Penalize ONLY if the quote is purely promotional (e.g., "We are happy to announce").
             Reject or downgrade if:
             - Sentences are overly long, vague, or wordy.
+            - The output contains promotional fluff.
             - The output contains spelling, grammar, or punctuation errors.
-            - Sentences feel weak, unfocused, or padded with non-essential modifiers.
-            - The key takeaway is buried, unclear, or absent.""",
+            - Sentences feel weak, unfocused, or padded with non-essential modifiers.""",
 
             evaluation_steps=["Check if the language is grammatically correct, with no spelling or punctuation issues.",
             "Review each sentence for clarity: is the meaning immediately clear and unambiguous?",
             "Check if phrasing uses direct, impactful constructions (e.g., begins with a strong verb, includes clear outcomes or figures).",
             "Flag the use of filler, buzzwords, or ambiguous terms (e.g., 'potentially impactful', 'somewhat likely').",
             "Determine whether each point conveys a clear takeaway or adds value to the audience.",
-            "Penalize outputs that contain fluff, buried conclusions, or complex wording that reduces clarity.",
+            "Penalize outputs that contain fluff, or complex wording that reduces clarity.",
             "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output is highly polished, clear, and impactful — language is concise, direct, grammatically flawless, and each point conveys a strong takeaway suitable for executives.; Score ≥ 0.7: Output is generally clear and professional, with only minor issues such as slightly wordy phrasing or buried takeaways that do not significantly impede understanding.; Score ≥ 0.5: Output has noticeable weaknesses in clarity, conciseness, or impact — sentences may be vague, filler-heavy, or lack clear takeaways, though still serviceable.; Score < 0.5: Output is poorly written for executive consumption — wordy, confusing, unpolished, with grammatical errors or missing key points."
             ],
 

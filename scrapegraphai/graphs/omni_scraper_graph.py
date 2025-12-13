@@ -40,7 +40,7 @@ class OmniScraperGraph(AbstractGraph):
         >>> omni_scraper = OmniScraperGraph(
         ...     "List me all the attractions in Chioggia and describe their pictures.",
         ...     "https://en.wikipedia.org/wiki/Chioggia",
-        ...     {"llm": {"model": "openai/gpt-4o"}}
+        ...     {"llm": {"model": "openai/gpt-5-mini"}}
         ... )
         >>> result = omni_scraper.run()
         )

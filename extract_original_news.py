@@ -458,9 +458,19 @@ def extract_from_results(results, output_xlsx: str = OUTPUT_XLSX, max_workers: i
         })
 
     df_out = pd.DataFrame(out_rows)
-    # Save to Excel
-    df_out.to_excel(output_xlsx, index=False)
-    log.info("Saved output to %s (rows=%d)", output_xlsx, len(df_out))
+    
+    # ✅ FIX: Only save if a valid path is provided
+    if output_xlsx:
+        try:
+            df_out.to_excel(output_xlsx, index=False)
+            # Use the global 'log' object defined at module level, or print if not available
+            if 'log' in globals():
+                log.info("Saved output to %s (rows=%d)", output_xlsx, len(df_out))
+            else:
+                print(f"Saved output to {output_xlsx} (rows={len(df_out)})")
+        except Exception as e:
+            print(f"Warning: Failed to save Excel file to {output_xlsx}: {e}")
+            
     return df_out
 
 if __name__ == "__main__":

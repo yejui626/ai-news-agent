@@ -34,7 +34,7 @@ class News(BaseModel):
 # 2. Scraper Class
 # ==============================================================================
 class TheEdgeScraper:
-    def __init__(self, model_name: str = "openai/gpt-4o-mini", headless: bool = True):
+    def __init__(self, model_name: str = "openai/gpt-5-mini", headless: bool = True):
         self.config = {
             "llm": {"model": model_name},
             "headless": headless,

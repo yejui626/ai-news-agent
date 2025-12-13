@@ -51,7 +51,7 @@ class Translator:
         self.evaluator = EvaluationAgent(task_type="translation", threshold=0.85)
         
         # Initialize LLM for the internal agent (Scanning)
-        self.agent_llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        self.agent_llm = ChatOpenAI(model="gpt-5-mini", temperature=0)
         
         # Bind the static tool to the LLM
         self.tools = [self.terminology_lookup]

@@ -23,7 +23,7 @@ def num_tokens_openai(text: str) -> int:
 
     logger.debug(f"Counting tokens for text of {len(text)} characters")
 
-    encoding = tiktoken.encoding_for_model("gpt-4o")
+    encoding = tiktoken.encoding_for_model("gpt-5-mini")
 
     num_tokens = len(encoding.encode(text))
     return num_tokens

@@ -6,7 +6,7 @@ import json
 def openai_llm(temperature=0):
     """Return an OpenAI-based LangChain Chat Model."""
     return ChatOpenAI(
-        model="gpt-4o-mini",  # or gpt-4-turbo
+        model="gpt-5-mini",  # or gpt-4-turbo
         temperature=temperature
     )
 

@@ -10,7 +10,7 @@ from evaluation_metrics import build_metrics
 class EvaluationAgent:
     def __init__(
         self,
-        model_name: str = "gpt-4o",
+        model_name: str = "gpt-5-mini",
         temperature: float = 0.0,
         threshold: float = 0.85,
         task_type: str = "general", 

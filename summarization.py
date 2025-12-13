@@ -46,7 +46,7 @@ class Summarizer:
     Now includes a Self-Correcting Agentic Workflow (Evaluator-Optimizer).
     """
     
-    def __init__(self, model_id: str = "ft:gpt-4.1-nano-2025-04-14:universiti-malaya:summarizer:CNgrReGm"):
+    def __init__(self, model_id: str = "ft:gpt-4.1-nano-2025-04-14:universiti-malaya:summarizer-07122025:Ck3tnFjB"):
         """
         Initializes the LLM and the Agent Graph.
         """
@@ -67,7 +67,7 @@ class Summarizer:
         self.evaluator = EvaluationAgent(
             task_type="summarization", 
             threshold=0.85,
-            model_name="gpt-4o-mini" 
+            model_name="gpt-5-mini" 
         )
 
         # Build the Graph once during initialization
@@ -82,9 +82,17 @@ class Summarizer:
         """
         costar = CostarPrompt(
             context="You are a corporate news analyst preparing brief updates for an investment report.",
-            objective="Analyze the full corporate news article and generate a concise abstractive summary.",
+            objective="Analyze the full corporate news article and generate a concise, data-heavy summary.",
             audience="The target audience is a senior investment editor or portfolio manager who needs quick, factual insights.",
-            response="Generate a summary that: 1) Is 3 to 4 sentences long. 2) Presents key corporate/financial developments factually. 3) Maintains a neutral, professional financial journalism tone. 4) Avoids opinions, redundancy, or speculative language. 5) Uses proper capitalization and standard financial abbreviations (RM, %, bn, m)."
+            
+            # ✅ IMPROVED RESPONSE INSTRUCTIONS
+            response="""Generate a summary strictly adhering to these rules:
+            1. **Structure:** Exactly 3 to 5 sentences.
+            2. **Content:** Prioritize hard data (Revenue, Profit, Dates).
+            3. **Tone:** Professional financial journalism.
+            4. **Quote Policy:** - **PERMITTED:** You MAY use quotes for key strategic announcements (e.g., "Company searching for new CEO", "Targeting completion by 2026").
+            - **FORBIDDEN:** DO NOT use quotes for emotional/promotional language (e.g., "We are delighted," "We are proud").
+            5. **Formatting:** Use standard abbreviations (RM, %, bn, m)."""
         )
         
         full_prompt_content = f"{str(costar)}\n\n### SOURCE ARTICLE ###\n{article_content}"
@@ -109,7 +117,7 @@ class Summarizer:
             context="You are a meticulous Senior Editor, tasked with refining a corporate news summary based on critical feedback. Your primary goal is to fix factual errors and ensure the tone is highly professional.",
             objective=f"Rework the summary to strictly address the following feedback and constraints:\n\n### FEEDBACK ###\n{improvements}",
             audience="The final audience is a senior investment editor.",
-            response=f"Output the final refined summary (3-4 sentences ONLY) that is factually flawless and maintains an impeccable executive tone. Base all facts ONLY on the source article provided below.\n\n### SOURCE ARTICLE ###\n{source_text}"
+            response=f"Output the final refined summary (3-5 sentences ONLY) that is factually flawless and maintains an impeccable executive tone. Base all facts ONLY on the source article provided below.\n\n### SOURCE ARTICLE ###\n{source_text}"
         )
         
         prompt_content = f"{str(refinement_costar)}\n\n### CURRENT DRAFT ###\n{current_draft}"

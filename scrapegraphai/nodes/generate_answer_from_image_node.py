@@ -76,7 +76,7 @@ class GenerateAnswerFromImageNode(BaseNode):
         images = state.get("screenshots", [])
         analyses = []
 
-        supported_models = ("gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4")
+        supported_models = ("gpt-4o", "gpt-5-mini", "gpt-4-turbo", "gpt-4")
 
         if (
             self.node_config["config"]["llm"]["model"].split("/")[-1]
