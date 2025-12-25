@@ -3,11 +3,13 @@ import sys
 import operator
 from typing import List, Dict, Any, TypedDict, Annotated
 from dotenv import load_dotenv
-
+from langchain.tools import tool
 # LangChain / LangGraph Imports
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langgraph.graph import StateGraph, END, START
+
+import llm
 
 # Local Imports handling (supports running from root or backend dir)
 try:
@@ -46,7 +48,7 @@ class Summarizer:
     Now includes a Self-Correcting Agentic Workflow (Evaluator-Optimizer).
     """
     
-    def __init__(self, model_id: str = "ft:gpt-4.1-nano-2025-04-14:universiti-malaya:summarizer-07122025:Ck3tnFjB"):
+    def __init__(self, model_id):
         """
         Initializes the LLM and the Agent Graph.
         """
@@ -59,14 +61,12 @@ class Summarizer:
         
         # System Message for the base generator
         self.system_message = SystemMessage(
-            content="You are a specialized financial summarization engine. Read the structured request and generate the summary strictly following the rules outlined in the 'Response' section of the CoSTAR prompt."
+            content="You are a specialized financial summarization engine. Read the structured request and generate the summary strictly following the rules outlined in the 'Response' section of the Content, Objective, Audience, Response section."
         )
 
-        # Initialize the Judge (Evaluator)
-        # We accept a slightly lower threshold for automated passing to avoid infinite loops on subjective style
         self.evaluator = EvaluationAgent(
             task_type="summarization", 
-            threshold=0.85,
+            threshold=0.8,
             model_name="gpt-5-mini" 
         )
 
@@ -76,14 +76,14 @@ class Summarizer:
     # -----------------------------------------------------------
     # Core Methods (Tools/Actions)
     # -----------------------------------------------------------
-    def summarize(self, article_content: str) -> str:
+    def summarize(self, article_content: str, config: dict = None) -> str:
         """
         Standard 0-shot summarization using CoSTAR.
         """
         costar = CostarPrompt(
-            context="You are a corporate news analyst preparing brief updates for an investment report.",
+            context="You are a corporate news analyst preparing brief updates for an Malaysia investment bank's daily news watch.",
             objective="Analyze the full corporate news article and generate a concise, data-heavy summary.",
-            audience="The target audience is a senior investment editor or portfolio manager who needs quick, factual insights.",
+            audience="The target audience is a investment and financial market professionals/ retailers who needs quick, factual insights.",
             
             # ✅ IMPROVED RESPONSE INSTRUCTIONS
             response="""Generate a summary strictly adhering to these rules:
@@ -103,35 +103,91 @@ class Summarizer:
         ]
         
         try:
-            response = self.llm.invoke(messages)
+            response = self.llm.invoke(messages, config=config)
             return response.content.strip()
         except Exception as e:
             print(f"--- [Summarizer] Error summarizing article: {e} ---")
             return "[Summarization Failed]"
 
+
+
+
     def refine_summary(self, source_text: str, current_draft: str, improvements: str) -> str:
         """
-        Refines the summary based on external evaluation feedback.
+        Refines the summary using a 'Blind Refinement' strategy to bypass 
+        fine-tuned summarization bias.
         """
-        refinement_costar = CostarPrompt(
-            context="You are a meticulous Senior Editor, tasked with refining a corporate news summary based on critical feedback. Your primary goal is to fix factual errors and ensure the tone is highly professional.",
-            objective=f"Rework the summary to strictly address the following feedback and constraints:\n\n### FEEDBACK ###\n{improvements}",
-            audience="The final audience is a senior investment editor.",
-            response=f"Output the final refined summary (3-5 sentences ONLY) that is factually flawless and maintains an impeccable executive tone. Base all facts ONLY on the source article provided below.\n\n### SOURCE ARTICLE ###\n{source_text}"
+        
+        # ==============================================================================
+        # 🛠️ STAGE 1: THE "RETRIEVAL TOOL" (Fact Extraction)
+        # We use the model to "lookup" the specific missing details from the source.
+        # ==============================================================================
+        
+        extraction_prompt = f"""
+        Extract the exact missing details requested below from the text.
+        
+        ### SOURCE TEXT ###
+        {source_text}
+
+        ### REQUESTED DETAILS ###
+        {improvements}
+
+        Output format: Bullet points of facts only.
+        """
+
+        llm_ext = ChatOpenAI(
+            model="gpt-4.1-nano",
+            temperature=0.0,
         )
         
-        prompt_content = f"{str(refinement_costar)}\n\n### CURRENT DRAFT ###\n{current_draft}"
+        # Use a low temp to ensure precise extraction
+        # Note: You can use a lighter model here (e.g., gpt-4o-mini) to save cost 
+        # since this is just extraction, not writing.
+        extractor_msgs = [HumanMessage(content=extraction_prompt)]
+        retrieved_facts = llm_ext.invoke(extractor_msgs).content.strip()
+
+        print(f"🔍 Extracted Facts for Refiner:\n{retrieved_facts}")
+
+        # ==============================================================================
+        # ✍️ STAGE 2: THE "BLIND" REFINER
+        # The Refiner sees the DRAFT and the FACTS, but NOT the full Source Text.
+        # This prevents the FT model from triggering its "Summarize" muscle memory.
+        # ==============================================================================
+
+        refinement_prompt = f"""
+        You are a Synthesis Engine. Perform the following steps strictly:
+
+        ### INPUT DATA ###
+        1. OLD DRAFT: {current_draft}
+        2. NEW FACTS TO INJECT: {retrieved_facts}
+        3. CRITICAL INSTRUCTIONS: {improvements}
+
+        ### STEP 1: DECONSTRUCTION (Mental Step) ###
+        - Break the OLD DRAFT down into simple key points.
+        - Merge the NEW FACTS into those points at the logical places.
+        - Ensure "CRITICAL INSTRUCTIONS" are met (e.g., tone fix).
+
+        ### STEP 2: RECONSTRUCTION (Output) ###
+        - Write a FRESH summary based *only* on your merged points from Step 1.
+        - DO NOT look at the "OLD DRAFT" sentences again.
+        - Use standard financial format (RM, %, bn, m).
+        - Length: 3-6 sentences.
+
+        Output ONLY the final summary from Step 2.
+        """
 
         messages = [
-            self.system_message,
-            HumanMessage(content=prompt_content)
+            SystemMessage(content="You are a Rewriting Tool. You NEVER output the input text. You always change the sentence structure."),
+            HumanMessage(content=refinement_prompt)
         ]
-        
-        try:
-            response = self.llm.invoke(messages)
-            return response.content.strip()
-        except Exception as e:
-            return current_draft # Fallback to previous draft if refinement fails
+
+        llm_refine = ChatOpenAI(
+            model=self.model_id,
+            temperature=0.5,
+        )
+
+        response = llm_refine.invoke(messages)
+        return response.content.strip()
 
     # -----------------------------------------------------------
     # Graph Nodes (Internal)

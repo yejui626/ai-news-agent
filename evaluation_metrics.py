@@ -43,27 +43,24 @@ def build_metrics(custom_llm, threshold, task_type="common"):
             name="Professional Tone & Grammar",
             model=custom_llm,
             evaluation_params=common_params,
-            criteria="""Evaluate whether the actual_output maintains a professional tone and writing style appropriate for the intended audience and context.
+            criteria="""Evaluate whether the actual_output maintains a professional analyst tone appropriate for the Malaysian equity research market.
             Rules:
             - Language should reflect professional standards: formal, respectful, and objective.
             - Avoid overly casual expressions, slang, contractions, emojis, speculative tone, or emotionally charged language.
-            - Terminology should align with domain-specific norms (e.g., financial, medical, technical) when applicable.
-            - For financial or executive communication (e.g., CIO reports), tone should be neutral, precise, and insight-driven.
+            - The tone should be neutral and insight-driven rather than promotional.
 
             Reject or downgrade if:
             - The output includes informal, vague, or speculative phrases (e.g., “maybe,” “I think,” “kind of”).
             - The tone is too conversational or emotionally biased.
-            - Terminology is misused or lacks the precision expected in a professional setting.
             - Formatting or grammar undermines the output’s professional quality.""",
 
             evaluation_steps=[
-                "Assess whether the 'actual_output' maintains a formal and professional tone appropriate for the audience (e.g., investors, executives, customers).",
                 "Scan for casual or unprofessional expressions such as slang, emojis, unnecessary contractions (e.g., 'gonna', 'wanna'), or filler phrases (e.g., 'you know', 'kind of').",
-                "Evaluate whether the terminology used is appropriate and accurate for the domain (e.g., financial terms like 'basis points as bps', '10 year as 10Y').",
                 "Ensure the tone is objective and neutral — avoid speculative or emotionally charged language (e.g., 'we're very excited', 'this is amazing').",
                 "Check grammar, sentence structure, and formatting consistency to ensure the text looks polished and professional.",
-                "Do not penalize for paraphrased phrasing as long as tone and domain alignment are preserved.",
-                "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output demonstrates an impeccable professional tone, with formal, precise, and neutral language fully aligned to the domain and audience expectations.; Score ≥ 0.7: Output maintains a generally professional tone with only minor lapses, such as slightly informal phrasing or minor stylistic inconsistencies that do not significantly detract from overall professionalism.; Score ≥ 0.5: Output shows noticeable issues with tone, such as informal expressions, vague or speculative language, or inconsistent terminology, but remains somewhat serviceable in a professional context.; Score < 0.5: Output is unprofessional in tone, with casual language, misuse of terminology, emotional bias, or poor grammar that undermines credibility."
+                "Check for the correct application of localized financial formatting, specifically the use of 'RM' and standard unit abbreviations like 'bn' and 'm'.",
+                "Do not penalize informality in strategic quotes regarding corporate actions, but any emotional or promotional quotes (e.g., 'we are delighted', 'proud to announce') must result in a significant score reduction.",
+                "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output demonstrates an impeccable professional tone, with formal, precise, and neutral language fully aligned to a financial news domain.; Score ≥ 0.7: Output maintains a generally professional tone with only minor lapses; Score ≥ 0.5: Output shows noticeable issues with tone, such as informal expressions, vague or speculative language, or inconsistent terminology, but remains somewhat serviceable in a professional context.; Score < 0.5: Output is unprofessional in tone, with casual language, misuse of terminology, emotional bias, or poor grammar that undermines credibility."
             ],
             threshold=threshold,
             rubric=common_rubric,
@@ -73,30 +70,20 @@ def build_metrics(custom_llm, threshold, task_type="common"):
             name="Executive Writing Quality",
             model=custom_llm,
             evaluation_params=common_params,
-            criteria="""Evaluate whether the 'actual_output' is written with a high level of polish and clarity suitable for time-constrained, decision-making professionals (e.g., CIOs or investors).
-            Rules:
-            - The language must be clear, direct, grammatically correct, and free from spelling or punctuation errors.
-            - Each sentence should be concise and free of unnecessary filler, vague modifiers, or marketing-style language.
-            - Outputs should be framed for maximum reader impact — the 'so what?' or key takeaway should be obvious.
-            - Language should avoid ambiguity, jargon, and speculative or fluffy phrases.
-            - Effective phrasing includes action verbs, precise figures, and structured clarity (e.g., cause → effect).
-            - Quotes are ACCEPTABLE if they convey material facts (e.g., reasons for a delay, future strategy).
-            - Penalize ONLY if the quote is purely promotional (e.g., "We are happy to announce").
-            Reject or downgrade if:
-            - Sentences are overly long, vague, or wordy.
-            - The output contains promotional fluff.
-            - The output contains spelling, grammar, or punctuation errors.
-            - Sentences feel weak, unfocused, or padded with non-essential modifiers.""",
+            criteria="""Evaluate whether the 'actual_output' is optimized for a senior investment professional. 
+    
+            1. Structural Integrity: The summary must be exactly 3 to 6 sentences. 
+            2. The News Lead: The opening sentence must contain the most material corporate development (Bottom Line Up Front).
+            3. Information Density: Prioritize precise figures (RM, %, bn, m) over descriptive adjectives. 
+            5. No Fluff: Penalize any promotional language or emotional quotes (e.g., 'we are delighted', 'exceptional results').""",
 
-            evaluation_steps=["Check if the language is grammatically correct, with no spelling or punctuation issues.",
-            "Review each sentence for clarity: is the meaning immediately clear and unambiguous?",
-            "Check if phrasing uses direct, impactful constructions (e.g., begins with a strong verb, includes clear outcomes or figures).",
-            "Flag the use of filler, buzzwords, or ambiguous terms (e.g., 'potentially impactful', 'somewhat likely').",
-            "Determine whether each point conveys a clear takeaway or adds value to the audience.",
-            "Penalize outputs that contain fluff, or complex wording that reduces clarity.",
-            "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output is highly polished, clear, and impactful — language is concise, direct, grammatically flawless, and each point conveys a strong takeaway suitable for executives.; Score ≥ 0.7: Output is generally clear and professional, with only minor issues such as slightly wordy phrasing or buried takeaways that do not significantly impede understanding.; Score ≥ 0.5: Output has noticeable weaknesses in clarity, conciseness, or impact — sentences may be vague, filler-heavy, or lack clear takeaways, though still serviceable.; Score < 0.5: Output is poorly written for executive consumption — wordy, confusing, unpolished, with grammatical errors or missing key points."
+            evaluation_steps=[
+                "Check if the opening sentence delivers the 'key news' immediately without background filler.",
+                "Check if the summary is using impactful sentences ensures the message is easily and quickly understood without ambiguity.",
+                "Penalize outputs that are too brief or overly verbose (below 3 or above 6 sentences).", 
+                "Penalize any promotional language or emotional quotes (e.g., 'we are delighted', 'exceptional results').",
+                "Assign a score: - Score ≥ 0.8: Highly polished, clear, concise, professional with top-notch executive quality - Score ≥ 0.5: Clear and professional, but may bury the lead or lack sufficient numeric density.- Score < 0.5: Wordy, promotional, or fails the 3-5 sentence structural constraint.",
             ],
-
             threshold=threshold,
             rubric = common_rubric,
         ),
@@ -175,23 +162,18 @@ def build_metrics(custom_llm, threshold, task_type="common"):
             name="Summary Coherence & Flow",
             model=custom_llm,
             evaluation_params=common_params,
-            criteria="""Evaluate whether the actual_output presents ideas in a logically ordered, coherent, and well-structured manner.
-            Rules:
-            - The sequence of information should follow a clear organizing principle such as thematic grouping, logical progression (e.g., Thesis → Evidence), or strategic framing (e.g., Risks → Implications → Outlook).
-            - A high score should be given for outputs that thoughtfully reorganize input information (even if it means deviating from original order) to improve clarity, especially for investor understanding.
-            - Outputs must avoid abrupt topic shifts or contradictions.
+            criteria="""Evaluate whether the output follows the established hierarchy of a professional daily news watch summary. The information must begin with a definitive lead sentence that captures the primary corporate development or financial event. Subsequent sentences must provide supporting data and strategic context. Strategic Quote Integration: In accordance with the defined Quote Policy, the summary should ideally include a quote that conveys material strategic facts or future outlook to provide authoritative weight to the news. The structure should avoid chronological storytelling and instead focus on a 'Key Point + Substantiation' model.
             Reject or downgrade if:
             - Ideas are randomly ordered or grouped in a confusing manner.
             - Transitions between ideas are missing or unclear.
             - The output contradicts itself or disrupts logical flow.
             - Structuring is present but feels unnatural or forced.""",
             evaluation_steps=[
-            "Analyze the actual_output for whether it follows a coherent organizing principle: thematic grouping, chronological flow, strategic grouping (e.g., all risks together), or argument structure (e.g., thesis → evidence → implication).",
-            "Check if the ideas are easy to follow, with smooth progression from one point to the next.",
-            "Ensure that any reordering from the input enhances rather than confuses the output.",
+            "Verify if the opening sentence contains the most material financial news or corporate action, such as a merger, earnings result, or contract win.",
+            "Assess if the supporting sentences follow a logical descent from high-impact news to operational details.",
             "Penalize jumbled, incoherent, contradictory, or disjointed outputs, regardless of format.",
             "Do not penalize for tone, factual precision, or strategic selection — focus only on idea structure and clarity of flow.",
-            "Assign a score between 0.0 and 1.0 based on the following scale: Score ≥ 0.9: Output is exceptionally clear, logically ordered, and easy to follow; ideas are grouped and sequenced in a way that enhances understanding and readability.; Score ≥ 0.7: Output is generally coherent with only minor lapses in flow or slightly awkward transitions that don’t significantly confuse the reader.; Score ≥ 0.5: Output has noticeable flaws in logical flow, such as disjointed ordering, unclear groupings, or jarring transitions, but is still somewhat comprehensible.; Score < 0.5: Output lacks logical structure, is confusing or contradictory, with ideas presented in a random or incoherent way that hinders understanding."
+            "Assign a score based on the scale: Score ≥ 0.9: Exceptional logical structure that prioritizes strategic impact. Score < 0.5: Jumbled presentation of facts without a clear cause and effect relationship."
             ],
             threshold=threshold,
             rubric=common_rubric,
@@ -209,6 +191,10 @@ def build_metrics(custom_llm, threshold, task_type="common"):
 
     elif task_type == "summarization":
         return {**metrics_common, **metrics_summarization}
-
+    elif task_type == "recovery_summarization":
+        return {
+            "Executive Writing Quality": metrics_common["Executive Writing Quality"],
+            "Summary Coherence & Flow": metrics_summarization["Summary Coherence & Flow"]
+        }
     else:
         raise ValueError(f"Unknown task_type: {task_type}")

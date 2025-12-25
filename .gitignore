@@ -1,5 +1,8 @@
 data/
-
+*.xlsx
+*.json
+*.csv
+mermaid.md
 
 
 # Byte-compiled / optimized / DLL files

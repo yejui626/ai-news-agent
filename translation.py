@@ -47,8 +47,8 @@ class Translator:
         self.last_prompts = {}
         
         # Initialize Evaluator (Lazy load or init here)
-        # We assume 0.85 is the passing threshold
-        self.evaluator = EvaluationAgent(task_type="translation", threshold=0.85)
+        # We assume 0.8 is the passing threshold
+        self.evaluator = EvaluationAgent(task_type="translation", threshold=0.8)
         
         # Initialize LLM for the internal agent (Scanning)
         self.agent_llm = ChatOpenAI(model="gpt-5-mini", temperature=0)

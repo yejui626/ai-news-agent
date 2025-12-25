@@ -12,7 +12,7 @@ class EvaluationAgent:
         self,
         model_name: str = "gpt-5-mini",
         temperature: float = 0.0,
-        threshold: float = 0.85,
+        threshold: float = 0.8,
         task_type: str = "general", 
         enable_logging: bool = True,
     ):

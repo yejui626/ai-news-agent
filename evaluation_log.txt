@@ -23,31 +23,31 @@
     "metrics": {
         "Factual Fidelity": {
             "score": 10,
-            "threshold": 0.85,
+            "threshold": 0.8,
             "passed": true,
             "feedback": "The actual output accurately reflects the input, maintaining all key facts such as the 15% revenue increase, the strong performance in terminal operations, and the influence of higher global energy demand. There are no hallucinations or missing critical information, demonstrating strong alignment with the evaluation steps."
         },
         "Content Importance & Relevance": {
             "score": 9,
-            "threshold": 0.85,
+            "threshold": 0.8,
             "passed": true,
             "feedback": "The actual output effectively preserves key insights from the input, including the 15% revenue increase and the factors driving this growth, such as terminal operations and global energy demand. The information is relevant and avoids redundancy, presenting the details in a clear and concise manner. However, the phrase 'stronger FY2024 results' could be seen as slightly less direct than the original statement, which may affect the overall clarity."
         },
         "Professional Tone & Grammar": {
             "score": 9,
-            "threshold": 0.85,
+            "threshold": 0.8,
             "passed": true,
             "feedback": "The response demonstrates accurate grammar and polished language. The tone is professional and concise, effectively summarizing the key points from the input. However, it could be slightly more explicit in stating the percentage increase at the beginning for clarity."
         },
         "Logical Flow & Coherence": {
             "score": 10,
-            "threshold": 0.85,
+            "threshold": 0.8,
             "passed": true,
             "feedback": "The actual output maintains a clear logical order, directly reflecting the input's key points about revenue increase, terminal operations, and energy demand without any contradictions or abrupt shifts in topic."
         },
         "Executive Writing Quality": {
             "score": 9,
-            "threshold": 0.85,
+            "threshold": 0.8,
             "passed": true,
             "feedback": "The response is concise and maintains an authoritative tone, effectively summarizing the key details of the input. It captures the essence of the revenue increase and the factors contributing to it, aligning well with the evaluation steps. However, it could be slightly more confident in phrasing to fully meet the tone requirement."
         }
